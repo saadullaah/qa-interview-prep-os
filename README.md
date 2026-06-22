@@ -116,24 +116,6 @@ Pick your first agent and start. Use your microphone for mock interviews — you
 
 ---
 
-## Free Forever
-
-This costs nothing. It runs on Claude (claude.ai has a free tier) or any Claude API key.
-
-If you want to use the Groq API instead (faster, completely free, no credit card):
-1. Get a free Groq API key at console.groq.com
-2. Update your Claude Code / Cursor settings to use Groq's Llama 3 model
-
-Instructions for Groq setup: see `references/groq-setup.md`
-
----
-
-## Credits
-
-Inspired by Allison Davern's PM Interview Prep OS.
-Built for the QA community.
----
-
 ## Contributing
 
 Found a question that should be in the bank? A template that is missing? Open a PR.
