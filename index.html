@@ -357,7 +357,7 @@
   .gh-link:hover { color: var(--text); border-color: var(--text-dim); }
 
   /* ─── INTERVIEW SCREEN ────────────────────────────────────── */
-  #interview { flex-direction: column; height: 100vh; }
+  #interview { flex-direction: column; height: 100vh; overflow: hidden; }
 
   .interview-header {
     background: var(--surface);
@@ -418,6 +418,7 @@
   /* ─── MESSAGES ────────────────────────────────────────────── */
   .messages {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 24px 20px;
     display: flex;
@@ -702,6 +703,14 @@
     </div>
   </div>
 
+  <div class="section-label">— SELECT YOUR LEVEL</div>
+
+  <div style="padding: 0 24px; max-width: 860px; margin: 0 auto 32px; display: flex; gap: 8px;">
+    <button class="level-btn active" id="landingLvlJunior" onclick="setLandingLevel('junior', this)">Junior</button>
+    <button class="level-btn"        id="landingLvlMid"    onclick="setLandingLevel('mid',    this)">Mid</button>
+    <button class="level-btn"        id="landingLvlSenior" onclick="setLandingLevel('senior', this)">Senior</button>
+  </div>
+
   <div class="section-label">— SELECT YOUR INTERVIEWER</div>
 
   <div class="agents-grid">
@@ -813,10 +822,11 @@
       <div class="interview-agent-sub"  id="headerAgentSub">Alex Chen</div>
     </div>
     <div class="header-spacer"></div>
-    <div class="level-selector" id="levelSelector" aria-label="Experience level">
-      <button class="level-btn active" onclick="setLevel('junior', this)" id="lvlJunior">Junior</button>
-      <button class="level-btn"        onclick="setLevel('mid',    this)" id="lvlMid">Mid</button>
-      <button class="level-btn"        onclick="setLevel('senior', this)" id="lvlSenior">Senior</button>
+    <div id="levelBadge" style="font-family:var(--mono);font-size:11px;color:var(--green);border:1px solid var(--green-mid);padding:4px 10px;border-radius:2px;letter-spacing:0.06em;text-transform:uppercase;"></div>
+    <div class="level-selector" id="levelSelector" aria-label="Experience level" style="display:none">
+      <button class="level-btn active" id="lvlJunior">Junior</button>
+      <button class="level-btn"        id="lvlMid">Mid</button>
+      <button class="level-btn"        id="lvlSenior">Senior</button>
     </div>
   </div>
 
@@ -853,7 +863,7 @@
 // STATE
 // ═══════════════════════════════════════════════════════
 let currentAgent  = null;
-let currentLevel  = 'mid';
+let currentLevel  = 'junior'; // matches the default active landing button
 let messages      = [];   // conversation history for API
 let isLoading     = false;
 let sessionStarted = false;
@@ -1173,15 +1183,16 @@ function startInterview(agentKey, cardEl) {
   if (cardEl) cardEl.classList.add('loading');
 
   currentAgent   = AGENTS[agentKey];
-  currentLevel   = currentLevel || 'mid';
+  // currentLevel is set by landing level buttons — do not override it here
   messages       = [];
   sessionStarted = false;
 
   document.getElementById('headerAgentName').textContent = currentAgent.name;
   document.getElementById('headerAgentSub').textContent  = currentAgent.sub;
 
-  // Lock level buttons once session starts
-  lockLevelButtons(false);
+  // Show selected level as a static badge in the interview header
+  const badge = document.getElementById('levelBadge');
+  if (badge) badge.textContent = currentLevel.toUpperCase();
 
   showScreen('interview');
   clearMessages();
@@ -1192,11 +1203,21 @@ function startInterview(agentKey, cardEl) {
 
 function goBack() {
   if (isRecording) stopRecording();
+  stopSpeaking();
   showScreen('landing');
   currentAgent   = null;
   messages       = [];
   sessionStarted = false;
   setInputEnabled(false);
+  lockLevelButtons(false); // always unlock level buttons when returning to landing
+  // Re-sync landing level buttons to current selection
+  const landingMap = { junior: 'landingLvlJunior', mid: 'landingLvlMid', senior: 'landingLvlSenior' };
+  ['landingLvlJunior','landingLvlMid','landingLvlSenior'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('active');
+  });
+  const activeLanding = document.getElementById(landingMap[currentLevel] || 'landingLvlMid');
+  if (activeLanding) activeLanding.classList.add('active');
 }
 
 function showScreen(id) {
@@ -1204,11 +1225,34 @@ function showScreen(id) {
   document.getElementById(id).classList.add('active');
 }
 
+function setLandingLevel(level, btn) {
+  currentLevel = level;
+  // update landing buttons
+  ['landingLvlJunior','landingLvlMid','landingLvlSenior'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('active');
+  });
+  btn.classList.add('active');
+  // sync interview header buttons too
+  syncInterviewLevelButtons(level);
+}
+
 function setLevel(level, btn) {
   if (sessionStarted) return; // lock level after session begins
   currentLevel = level;
-  document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
+  // only touch interview header buttons
+  ['lvlJunior','lvlMid','lvlSenior'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('active');
+  });
   btn.classList.add('active');
+}
+
+function syncInterviewLevelButtons(level) {
+  const map = { junior: 'lvlJunior', mid: 'lvlMid', senior: 'lvlSenior' };
+  document.querySelectorAll('.level-btn').forEach(b => b.classList.remove('active'));
+  const target = document.getElementById(map[level]);
+  if (target) target.classList.add('active');
 }
 
 function lockLevelButtons(locked) {
@@ -1284,14 +1328,15 @@ function renderText(text) {
 
 // Pull verdict from text and return styled HTML div (or '')
 function extractVerdict(text) {
-  if (/✅\s*PASS/i.test(text) && !/BORDERLINE/i.test(text) && !/NO PASS/i.test(text)) {
-    return '<div class="verdict pass">✅ PASS — This answer moves you forward.</div>';
+  // Order matters — check NO PASS and BORDERLINE before PASS to avoid false positives
+  if (/❌\s*NO PASS/i.test(text) || /\bNO PASS\b/i.test(text)) {
+    return '<div class="verdict fail">❌ NO PASS — This answer would not move you forward.</div>';
   }
-  if (/⚠️\s*BORDERLINE|(?<![✅❌])\bBORDERLINE\b/i.test(text)) {
+  if (/⚠️\s*BORDERLINE/i.test(text) || /\bBORDERLINE\b/i.test(text)) {
     return '<div class="verdict borderline">⚠️ BORDERLINE — Close but not there yet.</div>';
   }
-  if (/❌\s*NO PASS|(?<![✅⚠️])\bNO PASS\b/i.test(text)) {
-    return '<div class="verdict fail">❌ NO PASS — This answer would not move you forward.</div>';
+  if (/✅\s*PASS\b/i.test(text) || /\bPASS\b/i.test(text)) {
+    return '<div class="verdict pass">✅ PASS — This answer moves you forward.</div>';
   }
   return '';
 }
@@ -1383,13 +1428,28 @@ async function callOpenAICompat(apiMessages, p) {
 async function callGemini(apiMessages, systemPrompt) {
   const model = 'gemini-2.0-flash';
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey;
-  // Convert messages to Gemini format — system becomes first user turn
-  const contents = apiMessages
+  // Convert messages to Gemini format — filter system, enforce alternating roles
+  let contents = apiMessages
     .filter(m => m.role !== 'system')
     .map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+
+  // Gemini requires strictly alternating user/model roles — merge consecutive same-role messages
+  const merged = [];
+  for (const msg of contents) {
+    if (merged.length > 0 && merged[merged.length - 1].role === msg.role) {
+      merged[merged.length - 1].parts[0].text += '\n\n' + msg.parts[0].text;
+    } else {
+      merged.push(msg);
+    }
+  }
+  // Must start with user role
+  if (merged.length > 0 && merged[0].role === 'model') {
+    merged.unshift({ role: 'user', parts: [{ text: '(start)' }] });
+  }
+
   const body = {
     systemInstruction: { parts: [{ text: systemPrompt }] },
-    contents,
+    contents: merged,
     generationConfig: { temperature: 0.7, maxOutputTokens: 2048 }
   };
   const res = await fetch(url, {
@@ -1408,7 +1468,22 @@ async function callGemini(apiMessages, systemPrompt) {
 // Anthropic Messages API
 async function callAnthropic(apiMessages, systemPrompt) {
   // Anthropic requires alternating user/assistant roles — strip system from messages array
-  const filtered = apiMessages.filter(m => m.role !== 'system');
+  let filtered = apiMessages.filter(m => m.role !== 'system');
+
+  // Merge consecutive same-role messages (Anthropic strict requirement)
+  const alternating = [];
+  for (const msg of filtered) {
+    if (alternating.length > 0 && alternating[alternating.length - 1].role === msg.role) {
+      alternating[alternating.length - 1].content += '\n\n' + msg.content;
+    } else {
+      alternating.push({ ...msg });
+    }
+  }
+  // Must start with user role
+  if (alternating.length > 0 && alternating[0].role !== 'user') {
+    alternating.unshift({ role: 'user', content: '(start)' });
+  }
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -1420,7 +1495,7 @@ async function callAnthropic(apiMessages, systemPrompt) {
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       system: systemPrompt,
-      messages: filtered,
+      messages: alternating,
       max_tokens: 2048
     })
   });
@@ -1440,26 +1515,30 @@ async function sendOpener() {
 
   try {
     const reply = await callLLM(currentAgent.opener);
+    if (!currentAgent) return; // user navigated back mid-load
     removeTyping();
     addMessage('agent', reply);
     sessionStarted = true;
-    lockLevelButtons(true);
-    setInputEnabled(true);
-    document.getElementById('userInput').focus();
+    // level is locked on landing page — no need to disable buttons here
   } catch (e) {
+    if (!currentAgent) return; // user navigated back mid-load
     removeTyping();
     const providerLabel = document.getElementById('providerSelect').selectedOptions[0].text;
     addMessage('agent', `⚠️ Could not connect to ${providerLabel}: ${e.message}\n\nDouble-check your API key and try again.`);
     showToast(e.message, true);
+  } finally {
+    if (currentAgent) {
+      isLoading = false;
+      setInputEnabled(true);
+      document.getElementById('userInput').focus();
+    }
   }
-
-  isLoading = false;
 }
 
 async function sendMessage() {
   const input = document.getElementById('userInput');
   const text  = input.value.trim();
-  if (!text || isLoading) return;
+  if (!text || isLoading || !currentAgent) return;
 
   input.value = '';
   autoResize(input);
@@ -1470,8 +1549,6 @@ async function sendMessage() {
   showTyping();
 
   try {
-    // History already includes the user message we just added via addMessage
-    // So we pass null — the last item in messages[] IS the user turn
     const reply = await callLLM(null);
     removeTyping();
     addMessage('agent', reply);
@@ -1479,11 +1556,11 @@ async function sendMessage() {
     removeTyping();
     addMessage('agent', `⚠️ Error: ${e.message}`);
     showToast(e.message, true);
+  } finally {
+    isLoading = false;
+    setInputEnabled(true);
+    input.focus();
   }
-
-  isLoading = false;
-  setInputEnabled(true);
-  input.focus();
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1516,11 +1593,14 @@ async function startWhisperRecording() {
     return;
   }
 
+  // Reset state for new recording
+  audioChunks = [];
+  mediaRecorder = null;
+
   // Pick best supported format
   const mimeType = ['audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus','audio/mp4']
     .find(m => MediaRecorder.isTypeSupported(m)) || '';
 
-  audioChunks = [];
   mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
 
   mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
@@ -1710,12 +1790,7 @@ function stopSpeaking() {
   currentSpeakBtn  = null;
 }
 
-// Stop speech when navigating back to landing
-const _origGoBack = goBack;
-function goBack() {
-  stopSpeaking();
-  _origGoBack();
-}
+// Speech is stopped inside goBack() directly — no wrapper needed
 
 // ═══════════════════════════════════════════════════════
 // UTILS
