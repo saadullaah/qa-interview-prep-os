@@ -1,7 +1,7 @@
 # QA Interview Prep OS
 
 A free, open-source multi-agent mock interview system for QA and Automation Engineers.
-Inspired by Allison Davern's PM Interview Prep OS.
+
 
 Runs in Claude Code, Claude Cowork, or Cursor.
 
