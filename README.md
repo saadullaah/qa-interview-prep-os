@@ -132,9 +132,6 @@ Instructions for Groq setup: see `references/groq-setup.md`
 
 Inspired by Allison Davern's PM Interview Prep OS.
 Built for the QA community.
-
-If this helped you land a role, let me know. That is the only metric that matters.
-
 ---
 
 ## Contributing
